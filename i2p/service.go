@@ -179,34 +179,35 @@ func ensureDirectory(path string) error {
 }
 
 func writeExclusive(path string, data []byte, mode os.FileMode) error {
-	dir := filepath.Dir(path)
-	tmp, err := os.CreateTemp(dir, "."+filepath.Base(path)+".")
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, mode)
 	if err != nil {
-		return err
-	}
-	tmpPath := tmp.Name()
-	defer os.Remove(tmpPath)
-
-	if err := tmp.Chmod(mode); err != nil {
-		tmp.Close()
-		return err
-	}
-	if _, err := tmp.Write(data); err != nil {
-		tmp.Close()
-		return err
-	}
-	if err := tmp.Sync(); err != nil {
-		tmp.Close()
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		return err
-	}
-	if err := os.Link(tmpPath, path); err != nil {
 		if errors.Is(err, os.ErrExist) {
 			return fmt.Errorf("%s already exists", path)
 		}
 		return err
 	}
+	removeOnError := true
+	defer func() {
+		if removeOnError {
+			_ = os.Remove(path)
+		}
+	}()
+
+	if err := file.Chmod(mode); err != nil {
+		file.Close()
+		return err
+	}
+	if _, err := file.Write(data); err != nil {
+		file.Close()
+		return err
+	}
+	if err := file.Sync(); err != nil {
+		file.Close()
+		return err
+	}
+	if err := file.Close(); err != nil {
+		return err
+	}
+	removeOnError = false
 	return nil
 }
