@@ -12,7 +12,7 @@ import (
 
 const (
 	addressSuffix      = ".b32.i2p"
-	signingKeyType     = byte(7)
+	signingKeyType     = byte(11)
 	blindedSigningType = byte(11)
 )
 

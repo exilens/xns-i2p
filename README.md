@@ -74,15 +74,20 @@ xns-i2p inspect service
 ## Deterministic derivation
 
 An I2P Destination needs both a signing key and an encryption key. The
-OpenSSL Ed25519 seed is stored unchanged as the i2pd signing secret. The
-X25519 encryption secret and identity padding are derived with HMAC-SHA256.
+OpenSSL Ed25519 seed is expanded with SHA-512 and clamped into the RedDSA
+private scalar stored by i2pd for signing type 11. The X25519 encryption
+secret and identity padding are derived with HMAC-SHA256 from that scalar.
 
 The derivation is:
 
 ```text
-encryption_key = HMAC-SHA256(ed25519_seed, "XNS" || 0x00)
-identity_pad   = HMAC-SHA256(ed25519_seed, "XNS" || 0x01)
+expanded       = SHA-512(ed25519_seed)
+signing_scalar = clamp(expanded[0:32])
+encryption_key = HMAC-SHA256(signing_scalar, "XNS" || 0x00)
+identity_pad   = HMAC-SHA256(signing_scalar, "XNS" || 0x01)
 ```
 
 The same PEM therefore reproduces the same complete `private.dat`. The XNS
-owner key and extended address depend only on the Ed25519 public key.
+owner key and extended address depend only on the Ed25519 public key. The
+extended address uses RedDSA type 11 for both the unblinded and blinded
+signing types.

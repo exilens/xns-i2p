@@ -3,15 +3,17 @@ package i2p
 import (
 	"bytes"
 	"crypto/ecdh"
-	"crypto/ed25519"
 	"crypto/hmac"
 	"crypto/sha256"
+	"crypto/sha512"
 	"crypto/subtle"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"filippo.io/edwards25519"
 )
 
 const (
@@ -23,29 +25,43 @@ const (
 )
 
 type Service struct {
-	PublicKey []byte
-	Seed      []byte
-	Address   string
-	keys      []byte
+	PublicKey     []byte
+	PrivateScalar []byte
+	Address       string
+	keys          []byte
 }
 
 func serviceFromSeed(seed []byte) (Service, error) {
-	if len(seed) != ed25519.SeedSize {
+	if len(seed) != 32 {
 		return Service{}, errors.New("Ed25519 seed must be 32 bytes")
 	}
-	private := ed25519.NewKeyFromSeed(seed)
-	public := append([]byte(nil), private[32:]...)
+	expanded := sha512.Sum512(seed)
+	expanded[0] &= 248
+	expanded[31] &= 63
+	expanded[31] |= 64
+	return serviceFromScalar(expanded[:32])
+}
+
+func serviceFromScalar(privateScalar []byte) (Service, error) {
+	if len(privateScalar) != 32 {
+		return Service{}, errors.New("RedDSA private scalar must be 32 bytes")
+	}
+	scalar, err := new(edwards25519.Scalar).SetBytesWithClamping(privateScalar)
+	if err != nil {
+		return Service{}, fmt.Errorf("derive Ed25519 public key: %w", err)
+	}
+	public := new(edwards25519.Point).ScalarBaseMult(scalar).Bytes()
 	if err := validPublicKey(public); err != nil {
 		return Service{}, err
 	}
 
-	encryptionSecret := derive(seed, 0)
+	encryptionSecret := derive(privateScalar, 0)
 	xPrivate, err := ecdh.X25519().NewPrivateKey(encryptionSecret)
 	if err != nil {
 		return Service{}, fmt.Errorf("derive X25519 private key: %w", err)
 	}
 	encryptionPublic := xPrivate.PublicKey().Bytes()
-	padding := derive(seed, 1)
+	padding := derive(privateScalar, 1)
 
 	keys := make([]byte, privateKeysLength)
 	copy(keys[0:32], encryptionPublic)
@@ -61,17 +77,17 @@ func serviceFromSeed(seed []byte) (Service, error) {
 	binary.BigEndian.PutUint16(keys[387:389], uint16(signingKeyType))
 	binary.BigEndian.PutUint16(keys[389:391], cryptoKeyType)
 	copy(keys[391:423], encryptionSecret)
-	copy(keys[423:455], seed)
+	copy(keys[423:455], privateScalar)
 
 	address, err := Address(public)
 	if err != nil {
 		return Service{}, err
 	}
 	return Service{
-		PublicKey: public,
-		Seed:      append([]byte(nil), seed...),
-		Address:   address,
-		keys:      keys,
+		PublicKey:     public,
+		PrivateScalar: append([]byte(nil), privateScalar...),
+		Address:       address,
+		keys:          keys,
 	}, nil
 }
 
@@ -128,12 +144,12 @@ func ReadService(directory string) (Service, error) {
 		return Service{}, errors.New("private.dat is not an XNS Ed25519/X25519 destination")
 	}
 
-	service, err := serviceFromSeed(keys[423:455])
+	service, err := serviceFromScalar(keys[423:455])
 	if err != nil {
 		return Service{}, err
 	}
 	if subtle.ConstantTimeCompare(keys, service.keys) != 1 {
-		return Service{}, errors.New("private.dat does not match its signing seed or the XNS derivation")
+		return Service{}, errors.New("private.dat does not match its signing scalar or the XNS derivation")
 	}
 	if raw, err := os.ReadFile(filepath.Join(directory, hostnameFile)); err == nil {
 		if string(bytes.TrimSpace(raw)) != service.Address {
@@ -146,14 +162,14 @@ func ReadService(directory string) (Service, error) {
 }
 
 func verifyService(service Service) error {
-	expected, err := serviceFromSeed(service.Seed)
+	expected, err := serviceFromScalar(service.PrivateScalar)
 	if err != nil {
 		return err
 	}
 	if subtle.ConstantTimeCompare(service.PublicKey, expected.PublicKey) != 1 ||
 		subtle.ConstantTimeCompare(service.keys, expected.keys) != 1 ||
 		service.Address != expected.Address {
-		return errors.New("service does not match its Ed25519 seed")
+		return errors.New("service does not match its RedDSA private scalar")
 	}
 	return nil
 }
