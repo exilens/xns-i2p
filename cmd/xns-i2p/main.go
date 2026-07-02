@@ -63,6 +63,20 @@ func run(args []string) error {
 		printService(service)
 		return nil
 
+	case "from-tor":
+		if len(args) != 3 {
+			return errors.New("usage: xns-i2p from-tor TOR_DIRECTORY PRIVATE_DAT")
+		}
+		service, err := i2p.ServiceFromTorDirectory(args[1])
+		if err != nil {
+			return err
+		}
+		if err := i2p.WritePrivateDat(args[2], service); err != nil {
+			return err
+		}
+		printService(service)
+		return nil
+
 	case "inspect":
 		if len(args) != 2 {
 			return errors.New("usage: xns-i2p inspect DIRECTORY")
@@ -94,5 +108,6 @@ func usage() {
   xns-i2p address OWNER_KEY
   xns-i2p owner I2P_ADDRESS
   xns-i2p service PRIVATE_KEY.pem DIRECTORY
+  xns-i2p from-tor TOR_DIRECTORY PRIVATE_DAT
   xns-i2p inspect DIRECTORY`)
 }

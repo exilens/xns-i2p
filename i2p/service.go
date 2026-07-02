@@ -22,6 +22,9 @@ const (
 	privateKeysLength  = 455
 	certificateKeyType = byte(5)
 	cryptoKeyType      = uint16(4)
+
+	torPublicFile = "hs_ed25519_public_key"
+	torSecretFile = "hs_ed25519_secret_key"
 )
 
 type Service struct {
@@ -127,6 +130,13 @@ func WriteService(directory string, service Service) error {
 		written = append(written, path)
 	}
 	return nil
+}
+
+func WritePrivateDat(path string, service Service) error {
+	if err := verifyService(service); err != nil {
+		return err
+	}
+	return writeExclusive(path, service.keys, 0o600)
 }
 
 func ReadService(directory string) (Service, error) {

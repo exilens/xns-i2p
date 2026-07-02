@@ -59,6 +59,7 @@ type = http
 host = 127.0.0.1
 port = 8080
 keys = /path/to/service/private.dat
+signaturetype = 11
 i2cp.leaseSetType = 5
 ```
 
@@ -70,6 +71,21 @@ Inspect and verify a generated service:
 ```sh
 xns-i2p inspect service
 ```
+
+## Tor service to i2pd key file
+
+An existing Tor onion service can be reused as an XNS I2P identity. The Tor
+directory must contain matching `hs_ed25519_public_key` and
+`hs_ed25519_secret_key` files:
+
+```sh
+xns-i2p from-tor /path/to/hidden_service private.dat
+```
+
+The command reads Tor's expanded Ed25519 secret, verifies it against the Tor
+public key, and uses the first half as the RedDSA private scalar for the i2pd
+destination. The output is a single `private.dat` file. Existing files are
+never overwritten.
 
 ## Deterministic derivation
 
